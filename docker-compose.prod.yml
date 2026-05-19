@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   order-service:
-    image: bouchibaahmed/gourmetgo-order-service:20260519172434-16cc089
+    image: bouchibaahmed/gourmetgo-order-service:20260519174938-6336540
     environment:
       DB_HOST:     order-db
       DB_USER:     gourmetgo
@@ -74,7 +74,7 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP || exit 1"]
 
   kitchen-service:
-    image: bouchibaahmed/gourmetgo-kitchen-service:20260519172434-16cc089
+    image: bouchibaahmed/gourmetgo-kitchen-service:20260519174938-6336540
     environment:
       DB_HOST:     kitchen-db
       DB_USER:     gourmetgo
@@ -94,7 +94,7 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP || exit 1"]
 
   accounting-service:
-    image: bouchibaahmed/gourmetgo-accounting-service:20260519172434-16cc089
+    image: bouchibaahmed/gourmetgo-accounting-service:20260519174938-6336540
     environment:
       DB_HOST:     accounting-db
       DB_USER:     gourmetgo
@@ -114,7 +114,7 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP || exit 1"]
 
   order-orchestrator:
-    image: bouchibaahmed/gourmetgo-order-orchestrator:20260519172434-16cc089
+    image: bouchibaahmed/gourmetgo-order-orchestrator:20260519174938-6336540
     environment:
       SERVER_PORT:             8083
       ORDER_SERVICE_HOST:      order-service
@@ -136,7 +136,7 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP || exit 1"]
 
   frontend:
-    image: bouchibaahmed/gourmetgo-frontend:20260519172434-16cc089
+    image: bouchibaahmed/gourmetgo-frontend:20260519174938-6336540
     ports:
       - "3000:3000"
     depends_on:
