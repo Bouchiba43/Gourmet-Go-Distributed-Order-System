@@ -315,7 +315,7 @@ function OrderSection({ sectionRef }: { sectionRef: React.RefObject<HTMLElement 
       <div className="mx-auto max-w-5xl px-4">
 
         <p className="mb-1 text-center text-xs font-semibold uppercase tracking-[0.3em]" style={{ color: "#C9A84C" }}>
-          Today's Selection
+          {"Today's Selection"}
         </p>
         <h2
           className="mb-2 text-center text-4xl font-black"
