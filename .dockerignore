@@ -1,0 +1,14 @@
+# Never copy local build output into Docker — it would override the in-container mvn build
+**/target/
+**/.mvn/
+
+# Node / frontend build artefacts handled by frontend/Dockerfile
+frontend/node_modules/
+frontend/.next/
+frontend/.pnpm-store/
+
+# IDE and OS noise
+.idea/
+*.iml
+.DS_Store
+*.log

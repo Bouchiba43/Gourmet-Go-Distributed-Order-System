@@ -10,6 +10,10 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  datasource:
+    hikari:
+      connection-timeout: 30000         # max ms to wait for a connection from the pool
+      initialization-fail-timeout: 60000 # retry pool init for up to 60s before crashing
 
 server:
   port: ${SERVER_PORT:8080}
