@@ -1,0 +1,150 @@
+
+version: "3.9"
+
+# ── Shared network ─────────────────────────────────────────────────────────────
+networks:
+  gourmetgo-net:
+    driver: bridge
+
+# ── Reusable health-check anchors ──────────────────────────────────────────────
+x-pg-healthcheck: &pg-healthcheck
+  test: ["CMD-SHELL", "pg_isready -U gourmetgo"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+
+# ── Services ───────────────────────────────────────────────────────────────────
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────────
+
+  order-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: gourmetgo
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    networks: [gourmetgo-net]
+    healthcheck: *pg-healthcheck
+
+  kitchen-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kitchen_db
+      POSTGRES_USER: gourmetgo
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - kitchen-db-data:/var/lib/postgresql/data
+    networks: [gourmetgo-net]
+    healthcheck: *pg-healthcheck
+
+  accounting-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: accounting_db
+      POSTGRES_USER: gourmetgo
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - accounting-db-data:/var/lib/postgresql/data
+    networks: [gourmetgo-net]
+    healthcheck: *pg-healthcheck
+
+  # ── Backend services ──────────────────────────────────────────────────────────
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    environment:
+      DB_HOST: order-db
+      DB_USER: gourmetgo
+      DB_PASS: secret
+      SERVER_PORT: 8080
+      GRPC_PORT: 9000
+    ports:
+      - "8080:8080"   # REST
+      - "9000:9000"   # gRPC
+    depends_on:
+      order-db:
+        condition: service_healthy
+    networks: [gourmetgo-net]
+    restart: on-failure
+
+  kitchen-service:
+    build:
+      context: .
+      dockerfile: kitchen-service/Dockerfile
+    environment:
+      DB_HOST: kitchen-db
+      DB_USER: gourmetgo
+      DB_PASS: secret
+      SERVER_PORT: 8081
+      GRPC_PORT: 9001
+    ports:
+      - "8081:8081"   # REST
+      - "9001:9001"   # gRPC
+    depends_on:
+      kitchen-db:
+        condition: service_healthy
+    networks: [gourmetgo-net]
+    restart: on-failure
+
+  accounting-service:
+    build:
+      context: .
+      dockerfile: accounting-service/Dockerfile
+    environment:
+      DB_HOST: accounting-db
+      DB_USER: gourmetgo
+      DB_PASS: secret
+      SERVER_PORT: 8082
+      GRPC_PORT: 9002
+    ports:
+      - "8082:8082"   # REST
+      - "9002:9002"   # gRPC
+    depends_on:
+      accounting-db:
+        condition: service_healthy
+    networks: [gourmetgo-net]
+    restart: on-failure
+
+  order-orchestrator:
+    build:
+      context: .
+      dockerfile: order-orchestrator/Dockerfile
+    environment:
+      SERVER_PORT: 8083
+      ORDER_SERVICE_HOST: order-service
+      KITCHEN_SERVICE_HOST: kitchen-service
+      ACCOUNTING_SERVICE_HOST: accounting-service
+    ports:
+      - "8083:8083"   # REST
+    depends_on:
+      - order-service
+      - kitchen-service
+      - accounting-service
+    networks: [gourmetgo-net]
+    restart: on-failure
+
+  # ── Frontend ──────────────────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8083
+    ports:
+      - "3000:3000"
+    depends_on:
+      - order-orchestrator
+    networks: [gourmetgo-net]
+    restart: on-failure
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  order-db-data:
+  kitchen-db-data:
+  accounting-db-data:

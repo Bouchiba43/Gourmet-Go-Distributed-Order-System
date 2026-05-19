@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: order-orchestrator
+
+server:
+  port: ${SERVER_PORT:8083}
+
+grpc:
+  client:
+    order-service:
+      address: static://${ORDER_SERVICE_HOST:localhost}:9000
+      negotiation-type: plaintext
+    kitchen-service:
+      address: static://${KITCHEN_SERVICE_HOST:localhost}:9001
+      negotiation-type: plaintext
+    accounting-service:
+      address: static://${ACCOUNTING_SERVICE_HOST:localhost}:9002
+      negotiation-type: plaintext
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

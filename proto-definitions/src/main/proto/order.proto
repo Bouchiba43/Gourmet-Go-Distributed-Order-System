@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package com.gourmetgo.order;
+
+option java_package = "com.gourmetgo.proto.order";
+option java_outer_classname = "OrderProto";
+option java_multiple_files = true;
+
+// ── Messages ─────────────────────────────────────────────────────────────────
+
+message OrderItem {
+  string menu_item_id = 1;
+  string name         = 2;
+  int32  quantity     = 3;
+  double unit_price   = 4;
+}
+
+message CreateOrderRequest {
+  string            customer_id       = 1;
+  repeated OrderItem items            = 2;
+  string            delivery_address  = 3;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message UpdateOrderStatusRequest {
+  string      order_id = 1;
+  OrderStatus status   = 2;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+  string reason   = 2;
+}
+
+message OrderResponse {
+  string      order_id     = 1;
+  string      customer_id  = 2;
+  OrderStatus status       = 3;
+  double      total_amount = 4;
+  repeated OrderItem items = 5;
+}
+
+enum OrderStatus {
+  PENDING    = 0;
+  CONFIRMED  = 1;
+  PREPARING  = 2;
+  READY      = 3;
+  DELIVERED  = 4;
+  CANCELLED  = 5;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service OrderService {
+  rpc CreateOrder       (CreateOrderRequest)       returns (OrderResponse);
+  rpc GetOrder          (GetOrderRequest)           returns (OrderResponse);
+  rpc UpdateOrderStatus (UpdateOrderStatusRequest)  returns (OrderResponse);
+  rpc CancelOrder       (CancelOrderRequest)        returns (OrderResponse);
+}
