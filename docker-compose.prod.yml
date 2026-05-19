@@ -1,4 +1,3 @@
-
 networks:
   gourmetgo-net:
     driver: bridge
@@ -17,8 +16,6 @@ x-spring-healthcheck: &spring-healthcheck
   start_period: 45s
 
 services:
-
-  # ── Databases ───────────────────────────────────────────────────────────────
 
   order-db:
     image: postgres:16-alpine
@@ -55,8 +52,6 @@ services:
     networks: [gourmetgo-net]
     healthcheck: *pg-healthcheck
     restart: unless-stopped
-
-  # ── Leaf services ────────────────────────────────────────────────────────────
 
   order-service:
     image: bouchibaahmed/gourmetgo-order-service:20260519172434-16cc089
@@ -118,8 +113,6 @@ services:
       <<: *spring-healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP || exit 1"]
 
-  # ── Orchestrator ─────────────────────────────────────────────────────────────
-
   order-orchestrator:
     image: bouchibaahmed/gourmetgo-order-orchestrator:20260519172434-16cc089
     environment:
@@ -142,8 +135,6 @@ services:
       <<: *spring-healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP || exit 1"]
 
-  # ── Frontend ─────────────────────────────────────────────────────────────────
-
   frontend:
     image: bouchibaahmed/gourmetgo-frontend:20260519172434-16cc089
     ports:
@@ -154,8 +145,33 @@ services:
     networks: [gourmetgo-net]
     restart: unless-stopped
 
-# ── Volumes ──────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [gourmetgo-net]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks: [gourmetgo-net]
+    restart: unless-stopped
+
 volumes:
   order-db-data:
   kitchen-db-data:
   accounting-db-data:
+  prometheus-data:
+  grafana-data:

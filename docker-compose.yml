@@ -1,16 +1,9 @@
 version: "3.9"
 
-# ── Network ────────────────────────────────────────────────────────────────────
-# One named network so every container can resolve every other container by its
-# service name (order-service, kitchen-db, etc.) as the hostname.
 networks:
   gourmetgo-net:
     driver: bridge
 
-# ── YAML anchors ──────────────────────────────────────────────────────────────
-
-# Postgres health-check: pg_isready confirms the server is accepting connections.
-# This is what depends_on: condition: service_healthy waits for.
 x-pg-healthcheck: &pg-healthcheck
   test: ["CMD-SHELL", "pg_isready -U gourmetgo -d postgres"]
   interval: 10s
@@ -18,19 +11,13 @@ x-pg-healthcheck: &pg-healthcheck
   retries: 5
   start_period: 10s
 
-# Spring Boot health-check: calls the Actuator /health endpoint.
-# start_period gives the JVM time to start before Docker counts failed probes
-# against the retry budget.
 x-spring-healthcheck: &spring-healthcheck
   interval: 15s
   timeout: 5s
   retries: 6
   start_period: 45s
 
-# ── Services ───────────────────────────────────────────────────────────────────
 services:
-
-  # ── Databases ─────────────────────────────────────────────────────────────────
 
   order-db:
     image: postgres:16-alpine
@@ -65,24 +52,22 @@ services:
     networks: [gourmetgo-net]
     healthcheck: *pg-healthcheck
 
-  # ── Leaf services ─────────────────────────────────────────────────────────────
-
   order-service:
     build:
       context: .
       dockerfile: order-service/Dockerfile
     environment:
-      DB_HOST:     order-db      # resolved by Docker's internal DNS — NOT localhost
+      DB_HOST:     order-db
       DB_USER:     gourmetgo
       DB_PASS:     secret
       SERVER_PORT: 8080
       GRPC_PORT:   50051
     ports:
-      - "8080:8080"     # REST  (for direct testing / Actuator)
-      - "50051:50051"   # gRPC  (for grpcurl from the host)
+      - "8080:8080"
+      - "50051:50051"
     depends_on:
       order-db:
-        condition: service_healthy   # waits until pg_isready passes
+        condition: service_healthy
     networks: [gourmetgo-net]
     restart: on-failure
     healthcheck:
@@ -133,25 +118,20 @@ services:
       <<: *spring-healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP || exit 1"]
 
-  # ── Orchestrator ──────────────────────────────────────────────────────────────
-
   order-orchestrator:
     build:
       context: .
       dockerfile: order-orchestrator/Dockerfile
     environment:
-      SERVER_PORT:            8083
-      # These env vars map to grpc.client.*.address in application.yml.
-      # Inside Docker, services find each other by the service name below —
-      # "order-service" resolves to the order-service container's IP automatically.
-      ORDER_SERVICE_HOST:     order-service
-      KITCHEN_SERVICE_HOST:   kitchen-service
+      SERVER_PORT:             8083
+      ORDER_SERVICE_HOST:      order-service
+      KITCHEN_SERVICE_HOST:    kitchen-service
       ACCOUNTING_SERVICE_HOST: accounting-service
     ports:
       - "8083:8083"
     depends_on:
       order-service:
-        condition: service_healthy   # won't start until order-service /actuator/health is UP
+        condition: service_healthy
       kitchen-service:
         condition: service_healthy
       accounting-service:
@@ -162,14 +142,10 @@ services:
       <<: *spring-healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP || exit 1"]
 
-  # ── Frontend ──────────────────────────────────────────────────────────────────
-
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # NEXT_PUBLIC_* variables are baked into the JS bundle at build time.
-      # The browser calls http://localhost:8083 on the HOST — the exposed port.
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8083
     ports:
@@ -180,8 +156,33 @@ services:
     networks: [gourmetgo-net]
     restart: on-failure
 
-# ── Volumes ────────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [gourmetgo-net]
+    restart: on-failure
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks: [gourmetgo-net]
+    restart: on-failure
+
 volumes:
   order-db-data:
   kitchen-db-data:
   accounting-db-data:
+  prometheus-data:
+  grafana-data:

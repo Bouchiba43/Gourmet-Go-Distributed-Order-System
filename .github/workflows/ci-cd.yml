@@ -11,20 +11,18 @@ env:
   NODE_VERSION: '20'
   PNPM_VERSION: '10'
 
-# ── Job 1 — Build & Test Java modules ────────────────────────────────────────
 jobs:
   build-java:
     name: Build & Test Java
     runs-on: ubuntu-latest
 
-    # Provide a real PostgreSQL instance so future @SpringBootTest tests work.
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: gourmetgo
           POSTGRES_PASSWORD: secret
-          POSTGRES_DB: order_db       # order-service gets the named DB
+          POSTGRES_DB: order_db
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U gourmetgo -d postgres"
@@ -43,9 +41,6 @@ jobs:
           cache: maven
 
       - name: Build, test and package all modules
-        # DB_HOST/USER/PASS let Spring find the service container if any
-        # @SpringBootTest is written later. Proto stubs are generated during
-        # the generate-sources phase inside mvn verify.
         run: mvn -B verify --no-transfer-progress
         env:
           DB_HOST: localhost
@@ -71,7 +66,6 @@ jobs:
             accounting-service/target/*.jar
             order-orchestrator/target/*.jar
 
-# ── Job 2 — Build & Lint Frontend ────────────────────────────────────────────
   build-frontend:
     name: Build & Lint Frontend
     runs-on: ubuntu-latest
@@ -110,23 +104,18 @@ jobs:
           NEXT_PUBLIC_API_URL: http://localhost:8083
           NEXT_TELEMETRY_DISABLED: 1
 
-# ── Job 3 — Build & Push Docker images (main only) ───────────────────────────
-  docker-push:
-    name: Build & Push Docker Images
+  generate-tag:
+    name: Generate Image Tag
     runs-on: ubuntu-latest
     needs: [build-java, build-frontend]
     if: >
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
-    # Expose the generated tag so Job 4 can use it.
     outputs:
       image-tag: ${{ steps.tag.outputs.value }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      # ── Tag: YYYYMMDDHHmmss-<sha7> ────────────────────────────────────────
       - name: Generate image tag
         id: tag
         run: |
@@ -135,6 +124,43 @@ jobs:
           TAG="${TS}-${SHA}"
           echo "value=${TAG}" >> "$GITHUB_OUTPUT"
           echo "::notice::Image tag → ${TAG}"
+
+  docker-push:
+    name: Push ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: generate-tag
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service:    order-service
+            context:    .
+            dockerfile: order-service/Dockerfile
+            build-args: ""
+
+          - service:    kitchen-service
+            context:    .
+            dockerfile: kitchen-service/Dockerfile
+            build-args: ""
+
+          - service:    accounting-service
+            context:    .
+            dockerfile: accounting-service/Dockerfile
+            build-args: ""
+
+          - service:    order-orchestrator
+            context:    .
+            dockerfile: order-orchestrator/Dockerfile
+            build-args: ""
+
+          - service:    frontend
+            context:    ./frontend
+            dockerfile: frontend/Dockerfile
+            build-args: "NEXT_PUBLIC_API_URL=http://localhost:8083"
+
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -145,87 +171,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Java services — build context is the repo root ────────────────────
-      - name: Build & push order-service
+      - name: Build & push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: order-service/Dockerfile
-          push: true
+          context:    ${{ matrix.context }}
+          file:       ${{ matrix.dockerfile }}
+          push:       true
+          build-args: ${{ matrix.build-args }}
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-service:${{ steps.tag.outputs.value }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-service:latest
-          cache-from: type=gha,scope=order-service
-          cache-to:   type=gha,scope=order-service,mode=max
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-${{ matrix.service }}:${{ needs.generate-tag.outputs.image-tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to:   type=gha,scope=${{ matrix.service }},mode=max
 
-      - name: Build & push kitchen-service
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: kitchen-service/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-kitchen-service:${{ steps.tag.outputs.value }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-kitchen-service:latest
-          cache-from: type=gha,scope=kitchen-service
-          cache-to:   type=gha,scope=kitchen-service,mode=max
-
-      - name: Build & push accounting-service
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: accounting-service/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-accounting-service:${{ steps.tag.outputs.value }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-accounting-service:latest
-          cache-from: type=gha,scope=accounting-service
-          cache-to:   type=gha,scope=accounting-service,mode=max
-
-      - name: Build & push order-orchestrator
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: order-orchestrator/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-orchestrator:${{ steps.tag.outputs.value }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-orchestrator:latest
-          cache-from: type=gha,scope=order-orchestrator
-          cache-to:   type=gha,scope=order-orchestrator,mode=max
-
-      # ── Frontend — build context is ./frontend ─────────────────────────────
-      - name: Build & push frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: frontend/Dockerfile
-          push: true
-          build-args: |
-            NEXT_PUBLIC_API_URL=http://localhost:8083
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-frontend:${{ steps.tag.outputs.value }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-frontend:latest
-          cache-from: type=gha,scope=frontend
-          cache-to:   type=gha,scope=frontend,mode=max
-
-# ── Job 4 — Update docker-compose.prod.yml (main only) ───────────────────────
   update-compose:
     name: Pin Images in docker-compose.prod.yml
     runs-on: ubuntu-latest
-    needs: docker-push
+    needs: [generate-tag, docker-push]
     permissions:
-      contents: write   # allows the bot to push to the repo
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
         with:
-          # Use GITHUB_TOKEN so the push is authorised.
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Substitute image tags
         env:
-          TAG:  ${{ needs.docker-push.outputs.image-tag }}
+          TAG:  ${{ needs.generate-tag.outputs.image-tag }}
           USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           for svc in order-service kitchen-service accounting-service order-orchestrator frontend; do
@@ -238,12 +211,11 @@ jobs:
 
       - name: Commit and push
         env:
-          TAG: ${{ needs.docker-push.outputs.image-tag }}
+          TAG: ${{ needs.generate-tag.outputs.image-tag }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docker-compose.prod.yml
-          # Exit silently if nothing changed (e.g. re-run of same SHA)
           git diff --staged --quiet && echo "Nothing to commit." && exit 0
           git commit -m "ci: pin production images → ${TAG} [skip ci]"
           git push
