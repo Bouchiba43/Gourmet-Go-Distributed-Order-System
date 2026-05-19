@@ -59,7 +59,7 @@ services:
   # ── Leaf services ────────────────────────────────────────────────────────────
 
   order-service:
-    image: YOUR_DOCKERHUB_USERNAME/gourmetgo-order-service:latest
+    image: bouchibaahmed/gourmetgo-order-service:20260519172434-16cc089
     environment:
       DB_HOST:     order-db
       DB_USER:     gourmetgo
@@ -79,7 +79,7 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP || exit 1"]
 
   kitchen-service:
-    image: YOUR_DOCKERHUB_USERNAME/gourmetgo-kitchen-service:latest
+    image: bouchibaahmed/gourmetgo-kitchen-service:20260519172434-16cc089
     environment:
       DB_HOST:     kitchen-db
       DB_USER:     gourmetgo
@@ -99,7 +99,7 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP || exit 1"]
 
   accounting-service:
-    image: YOUR_DOCKERHUB_USERNAME/gourmetgo-accounting-service:latest
+    image: bouchibaahmed/gourmetgo-accounting-service:20260519172434-16cc089
     environment:
       DB_HOST:     accounting-db
       DB_USER:     gourmetgo
@@ -121,7 +121,7 @@ services:
   # ── Orchestrator ─────────────────────────────────────────────────────────────
 
   order-orchestrator:
-    image: YOUR_DOCKERHUB_USERNAME/gourmetgo-order-orchestrator:latest
+    image: bouchibaahmed/gourmetgo-order-orchestrator:20260519172434-16cc089
     environment:
       SERVER_PORT:             8083
       ORDER_SERVICE_HOST:      order-service
@@ -145,7 +145,7 @@ services:
   # ── Frontend ─────────────────────────────────────────────────────────────────
 
   frontend:
-    image: YOUR_DOCKERHUB_USERNAME/gourmetgo-frontend:latest
+    image: bouchibaahmed/gourmetgo-frontend:20260519172434-16cc089
     ports:
       - "3000:3000"
     depends_on:
