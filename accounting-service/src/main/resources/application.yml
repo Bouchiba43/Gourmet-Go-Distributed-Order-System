@@ -16,7 +16,7 @@ server:
 
 grpc:
   server:
-    port: ${GRPC_PORT:9002}
+    port: ${GRPC_PORT:50053}
 
 management:
   endpoints:

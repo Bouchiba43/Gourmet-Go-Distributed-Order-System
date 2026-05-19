@@ -32,6 +32,16 @@ message CancelTicketRequest {
   string reason    = 2;
 }
 
+// Compensation: reject a ticket before preparation begins
+message RejectRequest {
+  string ticket_id = 1;
+  string reason    = 2;
+}
+
+message RejectResponse {
+  bool acknowledged = 1;
+}
+
 message TicketResponse {
   string       ticket_id = 1;
   string       order_id  = 2;
@@ -54,4 +64,5 @@ service KitchenService {
   rpc GetTicket     (GetTicketRequest)     returns (TicketResponse);
   rpc ConfirmTicket (ConfirmTicketRequest) returns (TicketResponse);
   rpc CancelTicket  (CancelTicketRequest)  returns (TicketResponse);
+  rpc RejectTicket  (RejectRequest)        returns (RejectResponse);  // Compensation
 }

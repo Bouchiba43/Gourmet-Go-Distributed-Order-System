@@ -8,13 +8,13 @@ server:
 grpc:
   client:
     order-service:
-      address: static://${ORDER_SERVICE_HOST:localhost}:9000
+      address: static://${ORDER_SERVICE_HOST:localhost}:50051
       negotiation-type: plaintext
     kitchen-service:
-      address: static://${KITCHEN_SERVICE_HOST:localhost}:9001
+      address: static://${KITCHEN_SERVICE_HOST:localhost}:50052
       negotiation-type: plaintext
     accounting-service:
-      address: static://${ACCOUNTING_SERVICE_HOST:localhost}:9002
+      address: static://${ACCOUNTING_SERVICE_HOST:localhost}:50053
       negotiation-type: plaintext
 
 management:
