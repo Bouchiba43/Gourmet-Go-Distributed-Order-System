@@ -44,12 +44,15 @@ message OrderResponse {
 }
 
 enum OrderStatus {
-  PENDING    = 0;
-  CONFIRMED  = 1;
-  PREPARING  = 2;
-  READY      = 3;
-  DELIVERED  = 4;
-  CANCELLED  = 5;
+  PENDING          = 0;
+  CONFIRMED        = 1;
+  PREPARING        = 2;
+  READY            = 3;
+  DELIVERED        = 4;
+  CANCELLED        = 5;
+  APPROVAL_PENDING = 6; // saga started — awaiting kitchen + payment checks
+  APPROVED         = 7; // saga completed successfully
+  REJECTED         = 8; // saga compensated — order rejected
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
