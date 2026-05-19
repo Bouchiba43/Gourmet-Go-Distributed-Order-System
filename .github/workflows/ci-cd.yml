@@ -1,0 +1,249 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  JAVA_VERSION: '17'
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10'
+
+# ── Job 1 — Build & Test Java modules ────────────────────────────────────────
+jobs:
+  build-java:
+    name: Build & Test Java
+    runs-on: ubuntu-latest
+
+    # Provide a real PostgreSQL instance so future @SpringBootTest tests work.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gourmetgo
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: order_db       # order-service gets the named DB
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U gourmetgo -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Build, test and package all modules
+        # DB_HOST/USER/PASS let Spring find the service container if any
+        # @SpringBootTest is written later. Proto stubs are generated during
+        # the generate-sources phase inside mvn verify.
+        run: mvn -B verify --no-transfer-progress
+        env:
+          DB_HOST: localhost
+          DB_USER: gourmetgo
+          DB_PASS: secret
+
+      - name: Upload Surefire test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/*.xml'
+          retention-days: 14
+
+      - name: Upload service JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-jars
+          retention-days: 14
+          path: |
+            order-service/target/*.jar
+            kitchen-service/target/*.jar
+            accounting-service/target/*.jar
+            order-orchestrator/target/*.jar
+
+# ── Job 2 — Build & Lint Frontend ────────────────────────────────────────────
+  build-frontend:
+    name: Build & Lint Frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm ${{ env.PNPM_VERSION }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build (Next.js standalone)
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8083
+          NEXT_TELEMETRY_DISABLED: 1
+
+# ── Job 3 — Build & Push Docker images (main only) ───────────────────────────
+  docker-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [build-java, build-frontend]
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    # Expose the generated tag so Job 4 can use it.
+    outputs:
+      image-tag: ${{ steps.tag.outputs.value }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Tag: YYYYMMDDHHmmss-<sha7> ────────────────────────────────────────
+      - name: Generate image tag
+        id: tag
+        run: |
+          TS=$(date -u +%Y%m%d%H%M%S)
+          SHA="${GITHUB_SHA::7}"
+          TAG="${TS}-${SHA}"
+          echo "value=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Image tag → ${TAG}"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Java services — build context is the repo root ────────────────────
+      - name: Build & push order-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: order-service/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-service:${{ steps.tag.outputs.value }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-service:latest
+          cache-from: type=gha,scope=order-service
+          cache-to:   type=gha,scope=order-service,mode=max
+
+      - name: Build & push kitchen-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: kitchen-service/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-kitchen-service:${{ steps.tag.outputs.value }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-kitchen-service:latest
+          cache-from: type=gha,scope=kitchen-service
+          cache-to:   type=gha,scope=kitchen-service,mode=max
+
+      - name: Build & push accounting-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: accounting-service/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-accounting-service:${{ steps.tag.outputs.value }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-accounting-service:latest
+          cache-from: type=gha,scope=accounting-service
+          cache-to:   type=gha,scope=accounting-service,mode=max
+
+      - name: Build & push order-orchestrator
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: order-orchestrator/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-orchestrator:${{ steps.tag.outputs.value }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-order-orchestrator:latest
+          cache-from: type=gha,scope=order-orchestrator
+          cache-to:   type=gha,scope=order-orchestrator,mode=max
+
+      # ── Frontend — build context is ./frontend ─────────────────────────────
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:8083
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-frontend:${{ steps.tag.outputs.value }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/gourmetgo-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to:   type=gha,scope=frontend,mode=max
+
+# ── Job 4 — Update docker-compose.prod.yml (main only) ───────────────────────
+  update-compose:
+    name: Pin Images in docker-compose.prod.yml
+    runs-on: ubuntu-latest
+    needs: docker-push
+    permissions:
+      contents: write   # allows the bot to push to the repo
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Use GITHUB_TOKEN so the push is authorised.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Substitute image tags
+        env:
+          TAG:  ${{ needs.docker-push.outputs.image-tag }}
+          USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          for svc in order-service kitchen-service accounting-service order-orchestrator frontend; do
+            sed -i \
+              "s|image: .*/gourmetgo-${svc}:.*|image: ${USER}/gourmetgo-${svc}:${TAG}|" \
+              docker-compose.prod.yml
+          done
+          echo "--- Updated docker-compose.prod.yml ---"
+          grep "image:" docker-compose.prod.yml
+
+      - name: Commit and push
+        env:
+          TAG: ${{ needs.docker-push.outputs.image-tag }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docker-compose.prod.yml
+          # Exit silently if nothing changed (e.g. re-run of same SHA)
+          git diff --staged --quiet && echo "Nothing to commit." && exit 0
+          git commit -m "ci: pin production images → ${TAG} [skip ci]"
+          git push
