@@ -4,6 +4,9 @@ WORKDIR /workspace
 
 COPY pom.xml                        pom.xml
 COPY proto-definitions/pom.xml      proto-definitions/pom.xml
+COPY order-service/pom.xml          order-service/pom.xml
+COPY kitchen-service/pom.xml        kitchen-service/pom.xml
+COPY accounting-service/pom.xml     accounting-service/pom.xml
 COPY order-orchestrator/pom.xml     order-orchestrator/pom.xml
 
 RUN mvn -B dependency:go-offline -pl order-orchestrator -am -q

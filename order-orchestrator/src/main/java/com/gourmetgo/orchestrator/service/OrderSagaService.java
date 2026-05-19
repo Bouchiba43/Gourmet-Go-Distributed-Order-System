@@ -27,21 +27,32 @@ public class OrderSagaService {
     // ── Saga entry point ──────────────────────────────────────────────────────
 
     /**
-     * Runs the Create-Order saga.
+     * Runs the Create-Order saga end-to-end.
      *
-     * The order must already exist in order-service with status PENDING.
-     * The saga moves it through APPROVAL_PENDING → APPROVED or REJECTED.
-     *
+     * Step 0 creates the order in order-service (no pre-existing order required).
      * Happy path  : ticket created + payment authorized → APPROVED
      * Failure path: any step fails → compensate → REJECTED
      */
-    public SagaResponse runSaga(String orderId, double amount) {
+    public SagaResponse runSaga(String customerId, double amount, String deliveryAddress) {
 
         String ticketId = null;
+        String orderId  = null;
 
         try {
+            // ── Step 0: Create the order ──────────────────────────────────────
+            OrderResponse created = orderStub.createOrder(CreateOrderRequest.newBuilder()
+                    .setCustomerId(customerId)
+                    .setDeliveryAddress(deliveryAddress)
+                    .addItems(OrderItem.newBuilder()
+                            .setMenuItemId("item-1")
+                            .setName("Order")
+                            .setQuantity(1)
+                            .setUnitPrice(amount)
+                            .build())
+                    .build());
+            orderId = created.getOrderId();
+
             // ── Step 1: Mark order APPROVAL_PENDING ───────────────────────────
-            // Signals that the saga has started; visible to anyone polling the order.
             orderStub.updateOrderStatus(UpdateOrderStatusRequest.newBuilder()
                     .setOrderId(orderId)
                     .setStatus(OrderStatus.APPROVAL_PENDING)
@@ -57,10 +68,10 @@ public class OrderSagaService {
             ticketId = ticketResponse.getTicketId();
 
             // ── Step 3: Authorize payment ─────────────────────────────────────
-            // Business rule lives inside accounting-service: amount < 100 → AUTHORIZED
             PaymentResponse paymentResponse = accountingStub.authorizePayment(
                     AuthorizePaymentRequest.newBuilder()
                             .setOrderId(orderId)
+                            .setCustomerId(customerId)
                             .setAmount(amount)
                             .build());
 
@@ -125,13 +136,14 @@ public class OrderSagaService {
             }
         }
 
-        try {
-            orderStub.updateOrderStatus(UpdateOrderStatusRequest.newBuilder()
-                    .setOrderId(orderId)
-                    .setStatus(OrderStatus.REJECTED)
-                    .build());
-        } catch (StatusRuntimeException ignored) {
-
+        if (orderId != null) {
+            try {
+                orderStub.updateOrderStatus(UpdateOrderStatusRequest.newBuilder()
+                        .setOrderId(orderId)
+                        .setStatus(OrderStatus.REJECTED)
+                        .build());
+            } catch (StatusRuntimeException ignored) {
+            }
         }
     }
 }

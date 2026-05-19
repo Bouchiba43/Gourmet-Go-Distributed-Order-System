@@ -24,14 +24,14 @@ public class OrderController {
 
     /**
      * POST /api/orders
-     * Body: { "orderId": "...", "amount": 49.99 }
+     * Body: { "customerId": "...", "amount": 49.99, "deliveryAddress": "..." }
      *
-     * Triggers the saga. Returns 200 APPROVED or 422 REJECTED.
-     * The order must already exist in order-service (status = PENDING).
+     * Creates the order and runs the full saga. Returns 200 APPROVED or 422 REJECTED.
      */
     @PostMapping
     public ResponseEntity<SagaResponse> executeSaga(@RequestBody CreateOrderSagaRequest request) {
-        SagaResponse response = sagaService.runSaga(request.getOrderId(), request.getAmount());
+        SagaResponse response = sagaService.runSaga(
+                request.getCustomerId(), request.getAmount(), request.getDeliveryAddress());
 
         HttpStatus status = "APPROVED".equals(response.getStatus())
                 ? HttpStatus.OK
@@ -45,7 +45,7 @@ public class OrderController {
      * Delegates to order-service via gRPC and returns the current order state.
      */
     @GetMapping("/{orderId}")
-    public ResponseEntity<OrderDto> getOrder(@PathVariable String orderId) {
+    public ResponseEntity<OrderDto> getOrder(@PathVariable("orderId") String orderId) {
         try {
             OrderDto order = sagaService.getOrder(orderId);
             return ResponseEntity.ok(order);

@@ -6,14 +6,13 @@ spring:
     username: ${DB_USER:gourmetgo}
     password: ${DB_PASS:secret}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 30000
+      initialization-fail-timeout: 60000
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
-  datasource:
-    hikari:
-      connection-timeout: 30000
-      initialization-fail-timeout: 60000
 
 server:
   port: ${SERVER_PORT:8081}

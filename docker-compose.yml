@@ -12,7 +12,7 @@ networks:
 # Postgres health-check: pg_isready confirms the server is accepting connections.
 # This is what depends_on: condition: service_healthy waits for.
 x-pg-healthcheck: &pg-healthcheck
-  test: ["CMD-SHELL", "pg_isready -U gourmetgo"]
+  test: ["CMD-SHELL", "pg_isready -U gourmetgo -d postgres"]
   interval: 10s
   timeout: 5s
   retries: 5
